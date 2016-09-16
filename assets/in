@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+DEST_DIR="$1"
+
+GIT_DEST_DIR="$(mktemp -d -t git-resource-destination.XXXXXX)"
+
+/opt/resource/git/in "$GIT_DEST_DIR"
+
+cd "$GIT_DEST_DIR"
+
+[[ -f build.sbt ]] || { echo "There is no build.sbt in the project root" >&2; exit 1; }
+
+sbt update >&2
+rsync -a ~/.ivy2 ${DEST_DIR}/
+
+echo "Cached $(du -hs "$DEST_DIR/" | cut -f 1) in $(find "$DEST_DIR/" -type f | wc -l) files" >&2
