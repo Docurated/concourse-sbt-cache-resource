@@ -1,19 +1,27 @@
 #!/bin/bash
 
 set -e
-set -o pipefail
+
+exec 3>&1 # make stdout available as fd 3 for the result
+exec 1>&2 # redirect all output to stderr for logging
 
 DEST_DIR="$1"
+payload=$(mktemp $TMPDIR/sbt-cache-resource-request.XXXXXX)
+cat > $payload <&0
 
+project_root=($(jq -r '.source.project_root // ""' < $payload))
+
+echo "Pulling in git repo"
 GIT_DEST_DIR="$(mktemp -d -t git-resource-destination.XXXXXX)"
+cat "${payload}" | /opt/resource/git/in "$GIT_DEST_DIR" >&3
 
-/opt/resource/git/in "$GIT_DEST_DIR"
-
-cd "$GIT_DEST_DIR"
+cd "${GIT_DEST_DIR}/${project_root}"
 
 [[ -f build.sbt ]] || { echo "There is no build.sbt in the project root" >&2; exit 1; }
 
-sbt update >&2
-rsync -a ~/.ivy2 ${DEST_DIR}/
+echo "Running 'sbt update'"
+sbt update
+echo "Syncing sbt cache to ${DEST_DIR}"
+rsync -a ~/.ivy2/ ${DEST_DIR}/
 
-echo "Cached $(du -hs "$DEST_DIR/" | cut -f 1) in $(find "$DEST_DIR/" -type f | wc -l) files" >&2
+echo "Cached $(du -hs "$DEST_DIR/" | cut -f 1) in $(find "$DEST_DIR/" -type f | wc -l) files"
